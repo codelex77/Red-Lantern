@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EBB Studio - Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --cream: #FBF3EF; --ink: #241F1F; --berry: #A13D63;
+      --gold: #C79A4B; --blush: #F4D9E0;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Manrope', sans-serif; margin: 0; padding: 20px; background: var(--cream); color: var(--ink); }
+    h1 { font-family: 'Fraunces', serif; color: var(--berry); font-size: 20px; margin: 0 0 4px; }
+    .subtitle { color: #8a7a7a; font-size: 13px; margin-bottom: 4px; }
+    .box { max-width: 520px; margin: 24px auto; background: white; padding: 28px; border-radius: 16px; box-shadow: 0 4px 20px rgba(36,31,31,0.08); }
+    label { display: block; margin-top: 14px; font-size: 13px; font-weight: 700; color: #4a4141; }
+    input { width: 100%; padding: 11px; margin-top: 5px; box-sizing: border-box; border: 1.5px solid #eee0e0; border-radius: 8px; font-family: 'Manrope', sans-serif; font-size: 14px; }
+    input:focus { outline: none; border-color: var(--berry); }
+    button { margin-top: 18px; background: var(--berry); color: white; border: none; padding: 13px 20px; border-radius: 10px; cursor: pointer; font-weight: 700; width: 100%; font-size: 14px; }
+    button.secondary { background: #ECE3E3; color: var(--ink); }
+    button.danger { background: #C0392B; padding: 7px 14px; width: auto; font-size: 13px; }
+    button.toggle { background: var(--gold); color: var(--ink); padding: 7px 14px; width: auto; font-size: 13px; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #f2eaea; }
+    .row img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; }
+    .row-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+    .row-text b { font-size: 14px; } .row-text small { color: #8a7a7a; }
+    .row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .msg { font-size: 13px; margin-top: 10px; }
+    .msg.error { color: #C0392B; } .msg.ok { color: #2E8B57; }
+    #app { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div class="box" id="login-box">
+    <img src="images/ebb-logo.jpg" alt="EBB Studio logo" style="height:40px; border-radius:6px; margin-bottom:16px; display:block;">
+    <h1>EBB Studio Admin</h1>
+    <p class="subtitle">Log in to manage salon listings</p>
+    <label>Email</label>
+    <input type="email" id="email">
+    <label>Password</label>
+    <input type="password" id="password">
+    <button onclick="login()">Log In</button>
+    <p class="msg error" id="login-msg"></p>
+  </div>
+
+  <!-- ADMIN APP -->
+  <div id="app">
+    <div style="max-width:520px; margin:24px auto 0;">
+      <img src="images/ebb-logo.jpg" alt="EBB Studio logo" style="height:36px; border-radius:6px;">
+    </div>
+    <div class="box">
+      <h1>Add a Salon</h1>
+      <p class="subtitle">This appears on the live site immediately</p>
+      <label>Salon name</label>
+      <input id="f-name" placeholder="e.g. Glam Nails Gaborone">
+      <label>Location</label>
+      <input id="f-location" placeholder="e.g. CBD, Gaborone">
+      <label>Services</label>
+      <input id="f-services" placeholder="e.g. Acrylics, Gel, Pedicure">
+      <label>Price from (Pula)</label>
+      <input id="f-price" type="number" placeholder="150">
+      <label>Salon WhatsApp number (no + or spaces)</label>
+      <input id="f-whatsapp" placeholder="26777426421">
+      <label>Photo URL (optional — leave blank to use a default)</label>
+      <input id="f-image" placeholder="https://...">
+      <button onclick="addSalon()">Add Salon</button>
+      <p class="msg" id="add-msg"></p>
+    </div>
+
+    <div class="box">
+      <h1>Current Salons</h1>
+      <div id="salon-list">Loading...</div>
+    </div>
+
+    <div class="box">
+      <button class="secondary" onclick="logout()">Log Out</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // ⚠️ Same values as index.html
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1607779097040-26e80aa78e66?auto=format&fit=crop&w=100&q=80';
+
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        document.getElementById('login-box').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loadSalonList();
+      }
+    }
+
+    async function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const msg = document.getElementById('login-msg');
+      if (error) { msg.textContent = error.message; } else { msg.textContent = ''; checkSession(); }
+    }
+
+    async function logout() {
+      await supabase.auth.signOut();
+      location.reload();
+    }
+
+    async function addSalon() {
+      const name = document.getElementById('f-name').value.trim();
+      const location = document.getElementById('f-location').value.trim();
+      const services = document.getElementById('f-services').value.trim();
+      const price_from = parseInt(document.getElementById('f-price').value, 10);
+      const whatsapp = document.getElementById('f-whatsapp').value.trim() || '26777426421';
+      const image_url = document.getElementById('f-image').value.trim() || null;
+      const msg = document.getElementById('add-msg');
+
+      if (!name || !location || !services || !price_from) {
+        msg.className = 'msg error';
+        msg.textContent = 'Please fill in all fields.';
+        return;
+      }
+
+      const { error } = await supabase.from('salons').insert({ name, location, services, price_from, whatsapp, image_url });
+
+      if (error) { msg.className = 'msg error'; msg.textContent = error.message; return; }
+
+      msg.className = 'msg ok';
+      msg.textContent = 'Salon added — it is now live on the site.';
+      ['f-name', 'f-location', 'f-services', 'f-price', 'f-whatsapp', 'f-image'].forEach(id => document.getElementById(id).value = '');
+      loadSalonList();
+    }
+
+    async function deleteSalon(id) {
+      if (!confirm('Remove this salon from the site?')) return;
+      await supabase.from('salons').delete().eq('id', id);
+      loadSalonList();
+    }
+
+    async function toggleFeatured(id, current) {
+      await supabase.from('salons').update({ featured: !current }).eq('id', id);
+      loadSalonList();
+    }
+
+    async function loadSalonList() {
+      const list = document.getElementById('salon-list');
+      const { data, error } = await supabase.from('salons').select('*').order('sort_order');
+      if (error) { list.textContent = 'Could not load salons.'; return; }
+      if (!data.length) { list.textContent = 'No salons yet.'; return; }
+      list.innerHTML = data.map(s => `
+        <div class="row">
+          <div class="row-info">
+            <img src="${s.image_url || FALLBACK_IMAGE}" alt="">
+            <div class="row-text">
+              <b>${s.name}</b><br>
+              <small>${s.location} · From P${s.price_from} ${s.featured ? '' : '(hidden)'}</small>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="toggle" onclick="toggleFeatured('${s.id}', ${s.featured})">${s.featured ? 'Hide' : 'Show'}</button>
+            <button class="danger" onclick="deleteSalon('${s.id}')">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    checkSession();
+  </script>
+
+</body>
+</html>
